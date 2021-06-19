@@ -1,44 +1,63 @@
 pragma solidity ^0.8.0;
 
-contract ItemManager {
+import "./Ownable.sol";
+import "./Item.sol";
+
+contract ItemManager is Ownable {
     enum SupplyChainSteps {Created, Paid, Delivered}
 
     struct S_Item {
+        Item _item;
         ItemManager.SupplyChainSteps _step;
         string _identifier;
-        uint256 _priceInWei;
     }
 
     mapping(uint256 => S_Item) public items;
     uint256 index;
 
-    event SupplyChainStep(uint256 _itemIndex, uint256 _step);
+    event SupplyChainStep(uint256 _itemIndex, uint256 _step, address _address);
 
-    function createItem(string memory _identifier, uint256 _priceInWei) public {
-        items[index]._priceInWei = _priceInWei;
+    function createItem(string memory _identifier, uint256 _priceInWei)
+        public
+        onlyOwner
+    {
+        Item item = new Item(this, _priceInWei, index);
+        items[index]._item = item;
         items[index]._step = SupplyChainSteps.Created;
         items[index]._identifier = _identifier;
-
-        emit SupplyChainStep(index, uint256(items[index]._step));
+        emit SupplyChainStep(index, uint256(items[index]._step), address(item));
         index++;
     }
 
     function triggerPayment(uint256 _index) public payable {
-        require(items[_index]._priceInWei <= msg.value, "Not fully paid");
+        Item item = items[_index]._item;
+        require(
+            address(item) == msg.sender,
+            "Only items are allowed to update themselves"
+        );
+        require(item.priceInWei() == msg.value, "Not fully paid yet");
         require(
             items[_index]._step == SupplyChainSteps.Created,
-            "The item is further in the supply chain"
+            "Item is further in the supply chain"
         );
         items[_index]._step = SupplyChainSteps.Paid;
-        emit SupplyChainStep(_index, uint256(items[_index]._step));
+        emit SupplyChainStep(
+            _index,
+            uint256(items[_index]._step),
+            address(item)
+        );
     }
 
-    function triggerDelivery(uint256 _index) public {
+    function triggerDelivery(uint256 _index) public onlyOwner {
         require(
             items[_index]._step == SupplyChainSteps.Paid,
-            "The item is further in the supply chain"
+            "Item is further in the supply chain"
         );
         items[_index]._step = SupplyChainSteps.Delivered;
-        emit SupplyChainStep(_index, uint256(items[_index]._step));
+        emit SupplyChainStep(
+            _index,
+            uint256(items[_index]._step),
+            address(items[_index]._item)
+        );
     }
 }
